@@ -7,7 +7,7 @@ import ThreatCharts from './pages/ThreatCharts';
 import ThreatAlerts from './pages/ThreatAlerts';
 import DefenseHub from './pages/DefenseHub';
 import HoneypotLab from './pages/HoneypotLab';
-import Login from './pages/Login';
+import FaceAuthorisation from './pages/FaceAuthorisation';
 import AlertNotification from './components/AlertNotification';
 
 function App() {
@@ -15,7 +15,7 @@ function App() {
 
   // Absolute protection: If not authenticated, the dashboard routes don't even exist.
   if (!isAuthenticated) {
-    return <Login onLoginSuccess={() => setIsAuthenticated(true)} />;
+    return <FaceAuthorisation onAuth={() => setIsAuthenticated(true)} />;
   }
 
   return (
