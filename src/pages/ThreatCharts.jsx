@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -41,43 +41,47 @@ export default function ThreatCharts() {
   // State for charts
   const [timeLabels, setTimeLabels] = useState(Array(20).fill(''));
   const [packetData, setPacketData] = useState(Array(20).fill(0));
-  
-  const [protocolStats, setProtocolStats] = useState([50, 50]); // TCP, UDP
-  const [riskStats, setRiskStats] = useState([100, 0]); // Normal, Suspicious
+
+  // Use rolling windows for dynamic charts instead of static cumulative totals
+  const [recentProtocols, setRecentProtocols] = useState(Array(50).fill('TCP')); 
+  const [recentRisk, setRecentRisk] = useState(Array(50).fill('Normal'));
 
   // Counter for packets in current interval
   const packetCountRef = useRef(0);
 
   useEffect(() => {
-    // 1. Listen for global stats updates
-    const handleStatsUpdate = (e) => {
-      const data = e.detail;
-      const total = data.tcpTraffic + data.udpTraffic || 1;
-      setProtocolStats([
-        (data.tcpTraffic / total) * 100,
-        (data.udpTraffic / total) * 100
-      ]);
-
-      const totalRisk = data.totalPackets || 1;
-      const normalCount = data.totalPackets - data.threatAlerts;
-      setRiskStats([
-        (normalCount / totalRisk) * 100,
-        (data.threatAlerts / totalRisk) * 100
-      ]);
-    };
-
-    // 2. Listen for new packets to count throughput
-    const handleNewPacket = () => {
+    // Listen for new packets to update rolling windows and throughput
+    const handleNewPacket = (e) => {
       packetCountRef.current += 1;
+      const p = e.detail;
+      if (!p) return;
+
+      // Classify protocol
+      const isTcp = /TCP|HTTP|SSH|RDP/i.test(p.protocol);
+      const isUdp = /UDP|DNS|QUIC|NTP|SSDP/i.test(p.protocol);
+
+      if (isTcp || isUdp) {
+        setRecentProtocols(prev => {
+          const updated = [...prev, isTcp ? 'TCP' : 'UDP'];
+          if (updated.length > 50) return updated.slice(-50);
+          return updated;
+        });
+      }
+
+      // Classify Risk
+      setRecentRisk(prev => {
+        const updated = [...prev, p.risk === "Normal" ? "Normal" : "Suspicious"];
+        if (updated.length > 50) return updated.slice(-50);
+        return updated;
+      });
     };
 
-    window.addEventListener('stats-update', handleStatsUpdate);
     window.addEventListener('new-packet', handleNewPacket);
 
-    // 3. Update the Line Chart every 2 seconds
+    // Update the Line Chart every 2 seconds
     const interval = setInterval(() => {
       const now = new Date().toLocaleTimeString([], { hour12: false, second: '2-digit', minute: '2-digit' });
-      
+
       const currentThroughput = packetCountRef.current;
       packetCountRef.current = 0; // Reset for next interval
 
@@ -86,11 +90,26 @@ export default function ThreatCharts() {
     }, 2000);
 
     return () => {
-      window.removeEventListener('stats-update', handleStatsUpdate);
       window.removeEventListener('new-packet', handleNewPacket);
       clearInterval(interval);
     };
   }, []);
+
+  const protocolStats = useMemo(() => {
+    if (recentProtocols.length === 0) return [50, 50];
+    const tcpCount = recentProtocols.filter(p => p === 'TCP').length;
+    const udpCount = recentProtocols.filter(p => p === 'UDP').length;
+    const total = tcpCount + udpCount || 1;
+    return [(tcpCount / total) * 100, (udpCount / total) * 100];
+  }, [recentProtocols]);
+
+  const riskStats = useMemo(() => {
+    if (recentRisk.length === 0) return [100, 0];
+    const normalCount = recentRisk.filter(r => r === 'Normal').length;
+    const suspiciousCount = recentRisk.filter(r => r === 'Suspicious').length;
+    const total = normalCount + suspiciousCount || 1;
+    return [(normalCount / total) * 100, (suspiciousCount / total) * 100];
+  }, [recentRisk]);
 
   const lineChartData = {
     labels: timeLabels,
@@ -218,7 +237,7 @@ export default function ThreatCharts() {
           <RiskGauge />
         </div>
         <div className="lg:col-span-3">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
@@ -234,7 +253,7 @@ export default function ThreatCharts() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Pie Chart - TCP vs UDP */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
@@ -247,7 +266,7 @@ export default function ThreatCharts() {
         </motion.div>
 
         {/* Bar Chart - Normal vs Suspicious */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.4 }}

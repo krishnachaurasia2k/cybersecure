@@ -8,7 +8,7 @@ export default function PacketTable() {
 
   // Filters & Sorting State
   const [searchIp, setSearchIp] = useState('');
-  const [searchPort, setSearchPort] = useState('');
+  const [searchDevice, setSearchDevice] = useState('');
   const [filterProtocol, setFilterProtocol] = useState('All');
   const [filterRisk, setFilterRisk] = useState('All');
   const [sortConfig, setSortConfig] = useState({ key: 'time', direction: 'desc' });
@@ -44,14 +44,14 @@ export default function PacketTable() {
   const processedPackets = useMemo(() => {
     let filtered = packets.filter(packet => {
       if (!packet) return false;
-      
+
       const src = (packet.srcIp || packet.source_ip || '').toLowerCase();
       const dst = (packet.destIp || packet.destination_ip || '').toLowerCase();
       const matchesIp = src.includes(searchIp.toLowerCase()) || dst.includes(searchIp.toLowerCase());
-      
-      const portStr = String(packet.port || '0');
-      const matchesPort = searchPort === '' || portStr.includes(searchPort);
-      
+
+      const deviceStr = String(packet.deviceInfo || 'Unknown').toLowerCase();
+      const matchesDevice = searchDevice === '' || deviceStr.includes(searchDevice.toLowerCase());
+
       let matchesProtocol = filterProtocol === 'All';
       if (!matchesProtocol) {
         const proto = (packet.protocol || '').toString();
@@ -67,7 +67,7 @@ export default function PacketTable() {
       }
 
       const matchesRisk = filterRisk === 'All' || packet.risk === filterRisk;
-      return matchesIp && matchesPort && matchesProtocol && matchesRisk;
+      return matchesIp && matchesDevice && matchesProtocol && matchesRisk;
     });
 
     if (sortConfig.key) {
@@ -80,10 +80,10 @@ export default function PacketTable() {
     }
 
     return filtered;
-  }, [packets, searchIp, searchPort, filterProtocol, filterRisk, sortConfig]);
+  }, [packets, searchIp, searchDevice, filterProtocol, filterRisk, sortConfig]);
 
   const SortableHeader = ({ label, sortKey }) => (
-    <th 
+    <th
       className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-white/5 transition-colors group"
       onClick={() => handleSort(sortKey)}
     >
@@ -99,7 +99,7 @@ export default function PacketTable() {
 
   return (
     <div className="w-full glass-panel flex flex-col h-[75vh] relative overflow-hidden">
-      
+
       {/* Control Bar */}
       <div className="p-4 border-b border-white/10 flex flex-col xl:flex-row gap-4 items-center justify-between bg-black/20">
         <div className="flex flex-col md:flex-row gap-4 w-full xl:w-auto">
@@ -118,14 +118,14 @@ export default function PacketTable() {
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
             <input
               type="text"
-              placeholder="Port..."
-              value={searchPort}
-              onChange={(e) => setSearchPort(e.target.value)}
+              placeholder="Device..."
+              value={searchDevice}
+              onChange={(e) => setSearchDevice(e.target.value)}
               className="w-full bg-white/5 border border-white/10 rounded-lg pl-8 pr-4 py-2 text-sm text-white focus:outline-none focus:border-[#00f0ff] transition-all"
             />
           </div>
         </div>
-        
+
         <div className="flex items-center space-x-4 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
           <div className="flex items-center space-x-2">
             <select
@@ -164,17 +164,17 @@ export default function PacketTable() {
               <SortableHeader label="Source IP" sortKey="srcIp" />
               <SortableHeader label="Destination IP" sortKey="destIp" />
               <SortableHeader label="Protocol" sortKey="protocol" />
-              <SortableHeader label="Port" sortKey="port" />
+              <SortableHeader label="Device Info" sortKey="deviceInfo" />
               <SortableHeader label="Risk" sortKey="risk" />
             </tr>
           </thead>
-          
+
           <tbody className="divide-y divide-white/5">
             <AnimatePresence initial={false}>
               {processedPackets.map((packet, idx) => {
                 if (!packet) return null;
                 const isSuspicious = packet.risk === 'Suspicious';
-                
+
                 return (
                   <motion.tr
                     key={packet.id || idx}
@@ -202,8 +202,8 @@ export default function PacketTable() {
                         {packet.protocol}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400 font-mono">
-                      {packet.port}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono">
+                      {packet.deviceInfo || 'Unknown'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {isSuspicious ? (

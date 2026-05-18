@@ -7,6 +7,9 @@ from collections import deque, defaultdict
 import time
 import sys
 import os
+import random
+from scapy.layers.l2 import Ether
+from mac_vendor_lookup import MacLookup
 
 # Ensure we can import from current directory
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -31,6 +34,11 @@ packet_count = defaultdict(int)
 auto_defense_enabled = True  # Global flag for automated response
 protocol_launched = False   # Global flag for terminal initiation
 dns_cache = {}              # IP to Hostname mapping
+
+try:
+    mac_lookup = MacLookup()
+except:
+    mac_lookup = None
 
 stats = {
     "totalPackets": 0,
@@ -102,7 +110,8 @@ def process_packet(packet):
                     "risk": "Blocked",
                     "threatType": "Blocked Attempt",
                     "ai_prediction": "Blocked",
-                    "ai_score": 100
+                    "ai_score": 100,
+                    "deviceInfo": "Blocked"
                 }
                 packets_log.appendleft(packet_info)
                 process_packet.last_blocked_log = current_time
@@ -149,6 +158,31 @@ def process_packet(packet):
         if risk != "Normal":
             stats["threatAlerts"] += 1
 
+        # Infer Device Info
+        os_guess = "Unknown"
+        if packet.haslayer(IP):
+            ttl = packet[IP].ttl
+            if ttl <= 64: os_guess = "Mac/Linux"
+            elif ttl <= 128: os_guess = "Windows"
+            elif ttl <= 255: os_guess = "Network"
+
+        vendor = ""
+        if packet.haslayer(Ether):
+            mac = packet[Ether].src
+            if mac_lookup:
+                try:
+                    v = mac_lookup.lookup(mac)
+                    if "Apple" in v: vendor = "Apple"
+                    elif "Google" in v: vendor = "Google"
+                    elif "Samsung" in v: vendor = "Samsung"
+                    elif "Intel" in v: vendor = "Intel"
+                    elif "Microsoft" in v: vendor = "Microsoft"
+                    else: vendor = v.split()[0][:10]
+                except:
+                    pass
+        
+        device_info = f"{vendor} {os_guess}".strip() if vendor else os_guess
+
         # This dictionary must have keys expected by both React and storage.py
         packet_info = {
             "id": f"{int(time.time() * 1000)}-{stats['totalPackets']}",
@@ -162,7 +196,8 @@ def process_packet(packet):
             "risk": "Suspicious" if risk != "Normal" else "Normal",
             "threatType": risk,
             "ai_prediction": prediction,
-            "ai_score": score
+            "ai_score": score,
+            "deviceInfo": device_info
         }
 
         packets_log.appendleft(packet_info)
@@ -225,23 +260,93 @@ def toggle_defense():
     print(f">>> SYSTEM: Automated Defense is now {status_str}")
     return jsonify({"status": "success", "enabled": auto_defense_enabled})
 
+def start_simulation():
+    setup_log_file()
+    print(">>> Phase 2 Threat Detection (SIMULATION MODE for Render)...")
+    
+    # Simulate a packet every 0.1 to 2 seconds
+    while True:
+        time.sleep(random.uniform(0.1, 1.5))
+        time_now = datetime.now().strftime("%H:%M:%S")
+        
+        # Generate realistic-looking data
+        protocols = ["TCP", "UDP", "HTTPS (Web)", "DNS Query", "SSH (Remote)", "QUIC (Video/Web)"]
+        protocol = random.choice(protocols)
+        
+        src_ip = f"192.168.1.{random.randint(2, 254)}"
+        dst_ip = f"{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}"
+        
+        if random.random() < 0.2: # 20% threat chance
+            src_ip = f"{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}"
+            dst_ip = "192.168.1.100"
+            risk = "Suspicious"
+            port = random.choice([22, 3389, 445, 8080])
+        else:
+            risk = "Normal"
+            port = random.choice([443, 80, 53, 123])
+            
+        stats["totalPackets"] += 1
+        if "TCP" in protocol or "HTTP" in protocol or "SSH" in protocol:
+            stats["tcpTraffic"] += 1
+        else:
+            stats["udpTraffic"] += 1
+            
+        if risk != "Normal":
+            stats["threatAlerts"] += 1
+
+        packet_info = {
+            "id": f"{int(time.time() * 1000)}-{stats['totalPackets']}",
+            "time": time_now,
+            "srcIp": src_ip,
+            "destIp": dst_ip,
+            "source_ip": src_ip,
+            "destination_ip": dst_ip,
+            "protocol": protocol,
+            "port": port,
+            "risk": risk,
+            "threatType": "Port Scan" if risk != "Normal" else "Normal",
+            "ai_prediction": "Malicious" if risk != "Normal" else "Benign",
+            "ai_score": random.randint(80, 99) if risk != "Normal" else random.randint(1, 20),
+            "deviceInfo": random.choice(["Apple Mac/Linux", "Windows", "Google Mac/Linux", "Network"])
+        }
+
+        packets_log.appendleft(packet_info)
+        
+        try:
+            save_log(packet_info)
+            if auto_defense_enabled:
+                take_action(packet_info)
+        except Exception:
+            pass
+
 def start_monitor():
+    if os.environ.get('RENDER') == 'true':
+        start_simulation()
+        return
+
     setup_log_file()
     print(">>> Phase 2 Threat Detection Started with AI Integration...")
     print(">>> Source IP      Destination IP   Proto  Port   Risk         AI Prediction")
     print("-" * 100)
-    # On Mac, 'en0' is usually the active WiFi interface. 
-    # Forcing it ensures we capture external web traffic.
     print(">>> Sniffing on interface: en0")
-    sniff(iface="en0", prn=process_packet, store=False)
+    try:
+        sniff(iface="en0", prn=process_packet, store=False)
+    except PermissionError:
+        print(">>> Permission Denied for live sniffing. Falling back to Simulation Mode.")
+        start_simulation()
+    except Exception as e:
+        print(f">>> Sniff error: {e}. Falling back to Simulation Mode.")
+        start_simulation()
 
-if __name__ == "__main__":
-    # Start Monitor thread
+# Initialize background tasks for Gunicorn/Render compatibility
+def initialize_background_tasks():
     monitor_thread = threading.Thread(target=start_monitor, daemon=True)
     monitor_thread.start()
-    
-    # Start Honeypot threads
     run_honeypot()
-    
+
+# Start background tasks immediately when module is imported by Gunicorn
+initialize_background_tasks()
+
+if __name__ == "__main__":
     print(">>> Dashboard API available at http://localhost:5001/api/packets")
     app.run(port=5001, debug=False, host='0.0.0.0')

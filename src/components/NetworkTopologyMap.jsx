@@ -1,16 +1,16 @@
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Server, Database, Shield, Monitor, Globe } from 'lucide-react';
+import { Server, Database, Shield, Monitor, Globe, Activity, Cpu, Zap, Radio, Boxes, Layers } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const nodes = [
-  { id: 'internet', type: 'globe', label: 'External Network', icon: Globe, color: 'text-gray-400', glow: 'glow-box-primary', x: 10, y: 50 },
-  { id: 'firewall', type: 'shield', label: 'Firewall', icon: Shield, color: 'text-[#ff003c]', glow: 'glow-box-danger', x: 30, y: 50 },
-  { id: 'server', type: 'server', label: 'Main Server', icon: Server, color: 'text-[#00f0ff]', glow: 'glow-box-primary', x: 50, y: 50 },
-  { id: 'db1', type: 'database', label: 'Database A', icon: Database, color: 'text-[#b026ff]', glow: 'glow-box-purple', x: 75, y: 30 },
-  { id: 'db2', type: 'database', label: 'Database B', icon: Database, color: 'text-[#b026ff]', glow: 'glow-box-purple', x: 75, y: 70 },
-  { id: 'client1', type: 'monitor', label: 'Client 1', icon: Monitor, color: 'text-[#00ff66]', glow: 'glow-box-success', x: 50, y: 20 },
-  { id: 'client2', type: 'monitor', label: 'Client 2', icon: Monitor, color: 'text-[#00ff66]', glow: 'glow-box-success', x: 50, y: 80 },
+  { id: 'internet', label: 'External Network', icon: Globe, x: 10, y: 50, color: '#00f0ff' },
+  { id: 'firewall', label: 'Firewall', icon: Shield, x: 30, y: 50, color: '#ff003c' },
+  { id: 'server', label: 'Main Server', icon: Server, x: 50, y: 50, color: '#00f0ff' },
+  { id: 'db1', label: 'Database A', icon: Database, x: 75, y: 30, color: '#b026ff' },
+  { id: 'db2', label: 'Database B', icon: Database, x: 75, y: 70, color: '#b026ff' },
+  { id: 'client1', label: 'Client 1', icon: Monitor, x: 50, y: 20, color: '#00ff66' },
+  { id: 'client2', label: 'Client 2', icon: Monitor, x: 50, y: 80, color: '#00ff66' },
 ];
 
 const connections = [
@@ -22,7 +22,6 @@ const connections = [
   { id: 'c6', from: 'server', to: 'client2' },
 ];
 
-// Helper to determine node from IP
 const getNodeFromIP = (ip) => {
   if (!ip) return 'internet';
   if (ip === '127.0.0.1' || ip.startsWith('192.168.1.10')) return 'server';
@@ -35,26 +34,22 @@ const getNodeFromIP = (ip) => {
   return 'internet';
 };
 
-const PacketDot = ({ pathId, duration, color, onComplete }) => (
+const StreamParticle = ({ pathId, color, onComplete }) => (
   <motion.circle
-    r="3"
+    r="1.2"
     fill={color}
-    className="drop-shadow-[0_0_8px_rgba(255,255,255,0.9)]"
-    initial={{ offsetDistance: "0%" }}
-    animate={{ offsetDistance: "100%" }}
+    initial={{ offsetDistance: "0%", opacity: 0 }}
+    animate={{ offsetDistance: "100%", opacity: [0, 1, 1, 0] }}
     onAnimationComplete={onComplete}
-    transition={{
-      duration: duration,
-      ease: "linear"
-    }}
-    style={{ offsetPath: `url(#${pathId})` }}
+    transition={{ duration: 1.2, ease: "easeInOut" }}
+    style={{ offsetPath: `url(#${pathId})`, filter: `drop-shadow(0 0 4px ${color})` }}
   />
 );
 
 export default function NetworkTopologyMap() {
-  const [activePackets, setActivePackets] = useState([]);
-  const [pulsingPaths, setPulsingPaths] = useState({});
-  const packetIdCounter = useRef(0);
+  const [activeStreams, setActiveStreams] = useState([]);
+  const [pulsingNodes, setPulsingNodes] = useState({});
+  const streamIdCounter = useRef(0);
 
   useEffect(() => {
     const handleNewPacket = (e) => {
@@ -63,37 +58,27 @@ export default function NetworkTopologyMap() {
       const dstNodeId = getNodeFromIP(p.destIp);
       const isSuspicious = p.risk === 'Suspicious';
 
-      // Find relevant connection paths to pulse
-      const pathsToPulse = [];
-      
-      // Basic logic: if external to server, pulse internet -> firewall -> server
-      if (srcNodeId === 'internet' && (dstNodeId === 'server' || dstNodeId.startsWith('client'))) {
-        pathsToPulse.push('c1', 'c2');
-        if (dstNodeId === 'client1') pathsToPulse.push('c5');
-        if (dstNodeId === 'client2') pathsToPulse.push('c6');
-      } else if (srcNodeId === 'server') {
-        if (dstNodeId === 'db1') pathsToPulse.push('c3');
-        if (dstNodeId === 'db2') pathsToPulse.push('c4');
-        if (dstNodeId === 'client1') pathsToPulse.push('c5');
-        if (dstNodeId === 'client2') pathsToPulse.push('c6');
-      }
+      const paths = [];
+      if (srcNodeId === 'internet') paths.push('c1', 'c2');
+      if (dstNodeId === 'db1') paths.push('c3');
+      if (dstNodeId === 'db2') paths.push('c4');
+      if (dstNodeId === 'client1') paths.push('c5');
+      if (dstNodeId === 'client2') paths.push('c6');
 
-      // Add packets to animation
-      pathsToPulse.forEach(connId => {
-        const id = packetIdCounter.current++;
-        const color = isSuspicious ? '#ff003c' : (srcNodeId === 'internet' ? '#00f0ff' : '#b026ff');
-        
-        setActivePackets(prev => [...prev, { id, connId, color }]);
-        
-        // Pulse the path
-        setPulsingPaths(prev => ({ ...prev, [connId]: true }));
-        setTimeout(() => {
-          setPulsingPaths(prev => {
-            const newState = { ...prev };
-            delete newState[connId];
-            return newState;
-          });
-        }, 1000);
+      setPulsingNodes(prev => ({ ...prev, [srcNodeId]: true, [dstNodeId]: true }));
+      setTimeout(() => {
+        setPulsingNodes(prev => {
+          const next = { ...prev };
+          delete next[srcNodeId];
+          delete next[dstNodeId];
+          return next;
+        });
+      }, 800);
+
+      paths.forEach(connId => {
+        const id = streamIdCounter.current++;
+        const color = isSuspicious ? '#ff003c' : '#00f0ff';
+        setActiveStreams(prev => [...prev.slice(-40), { id, connId, color }]);
       });
     };
 
@@ -101,135 +86,147 @@ export default function NetworkTopologyMap() {
     return () => window.removeEventListener('new-packet', handleNewPacket);
   }, []);
 
-  const removePacket = (id) => {
-    setActivePackets(prev => prev.filter(p => p.id !== id));
-  };
-
   return (
-    <div className="relative w-full h-[550px] glass-panel border border-white/10 rounded-xl overflow-hidden bg-[rgba(10,10,15,0.7)] shadow-2xl">
-      {/* Background Grid */}
-      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjU1LCAyNTUsIDI1NSwgMC4wNSkiLz48L3N2Zz4=')] opacity-50 pointer-events-none" />
-
-      {/* SVG Connections & Packets */}
-      <svg 
-        viewBox="0 0 100 100" 
-        preserveAspectRatio="none" 
-        className="absolute inset-0 w-full h-full pointer-events-none"
+    <div className="relative w-full h-[750px] bg-[#020205] perspective-[2000px] overflow-hidden rounded-[40px] border border-white/10 group">
+      {/* 3D Tilted Container */}
+      <div 
+        className="absolute inset-0 transition-transform duration-1000 ease-out preserve-3d"
+        style={{ transform: 'rotateX(20deg) rotateY(-5deg) translateY(50px)' }}
       >
-        <defs>
-          <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="rgba(0,240,255,0.2)" />
-            <stop offset="50%" stopColor="rgba(0,240,255,0.6)" />
-            <stop offset="100%" stopColor="rgba(176,38,255,0.2)" />
-          </linearGradient>
-          <filter id="glow-line" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="1" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
-        </defs>
+        {/* Holographic Base Grid */}
+        <div className="absolute inset-x-0 bottom-0 h-full bg-[linear-gradient(to_bottom,transparent_0%,rgba(0,240,255,0.05)_100%)] industrial-grid opacity-30" />
+        
+        {/* Dynamic Light Rays */}
+        <div className="absolute inset-0 bg-gradient-radial from-primary/5 to-transparent blur-[120px] pointer-events-none" />
 
-        {connections.map((conn) => {
-          const fromNode = nodes.find(n => n.id === conn.from);
-          const toNode = nodes.find(n => n.id === conn.to);
-          const pathId = `path-${conn.id}`;
-          const isPulsing = pulsingPaths[conn.id];
-          
-          return (
-            <g key={conn.id}>
-              <path
-                id={pathId}
-                d={`M ${fromNode.x} ${fromNode.y} L ${toNode.x} ${toNode.y}`}
-                fill="none"
-              />
-              <motion.path
-                d={`M ${fromNode.x} ${fromNode.y} L ${toNode.x} ${toNode.y}`}
-                stroke={isPulsing ? "#00f0ff" : "url(#lineGrad)"}
-                strokeWidth={isPulsing ? "1.2" : "0.6"}
-                strokeOpacity={isPulsing ? 1 : 0.4}
-                fill="none"
-                animate={{ 
-                  strokeOpacity: isPulsing ? [0.5, 1, 0.5] : 0.4,
-                  strokeWidth: isPulsing ? [0.6, 1.2, 0.6] : 0.6
-                }}
-                transition={{ duration: 1, repeat: isPulsing ? Infinity : 0 }}
-                filter="url(#glow-line)"
-              />
-              {/* Dynamic Packets */}
-              {activePackets.filter(p => p.connId === conn.id).map(p => (
-                <PacketDot 
-                  key={p.id} 
-                  pathId={pathId} 
-                  duration={1.5} 
-                  color={p.color} 
-                  onComplete={() => removePacket(p.id)} 
+        <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full p-20 overflow-visible">
+          <defs>
+            <linearGradient id="beam-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="rgba(0,240,255,0)" />
+              <stop offset="50%" stopColor="rgba(0,240,255,0.1)" />
+              <stop offset="100%" stopColor="rgba(0,240,255,0)" />
+            </linearGradient>
+            <filter id="hologram-glow">
+              <feGaussianBlur stdDeviation="1.5" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+
+          {/* Connection Beams */}
+          {connections.map((conn) => {
+            const from = nodes.find(n => n.id === conn.from);
+            const to = nodes.find(n => n.id === conn.to);
+            return (
+              <g key={conn.id}>
+                <path
+                  id={`stream-${conn.id}`}
+                  d={`M ${from.x} ${from.y} L ${to.x} ${to.y}`}
+                  fill="none"
+                  stroke="rgba(0,240,255,0.05)"
+                  strokeWidth="0.8"
                 />
-              ))}
-            </g>
-          );
-        })}
-      </svg>
-
-      {/* Nodes */}
-      {nodes.map((node) => {
-        const Icon = node.icon;
-        const isNodeActive = activePackets.some(p => {
-          const conn = connections.find(c => c.id === p.connId);
-          return conn.from === node.id || conn.to === node.id;
-        });
-
-        return (
-          <motion.div
-            key={node.id}
-            className="absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center"
-            style={{ left: `${node.x}%`, top: `${node.y}%` }}
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: "spring", stiffness: 100 }}
-          >
-            <motion.div 
-              animate={{ 
-                scale: isNodeActive ? [1, 1.1, 1] : 1,
-                boxShadow: isNodeActive ? "0 0 30px rgba(0,240,255,0.4)" : "none"
-              }}
-              className={cn(
-                "p-4 rounded-2xl bg-[rgba(15,15,25,0.9)] border border-white/10 backdrop-blur-xl relative z-10 transition-all duration-300",
-                node.glow,
-                isNodeActive && "border-[#00f0ff]/50"
-              )}
-            >
-              <Icon className={cn("w-8 h-8", node.color)} />
-              
-              {isNodeActive && (
-                <motion.div
-                  className="absolute inset-0 rounded-2xl border border-[#00f0ff]/50"
-                  initial={{ opacity: 0, scale: 1 }}
-                  animate={{ opacity: [0, 1, 0], scale: [1, 1.5] }}
-                  transition={{ duration: 1, repeat: Infinity }}
+                <motion.path
+                  d={`M ${from.x} ${from.y} L ${to.x} ${to.y}`}
+                  fill="none"
+                  stroke="url(#beam-grad)"
+                  strokeWidth="2"
+                  animate={{ strokeDashoffset: [0, -20] }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  strokeDasharray="5 15"
                 />
-              )}
-            </motion.div>
-            <div className="mt-3 px-3 py-1 rounded-full bg-black/40 border border-white/5 backdrop-blur-md">
-              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">{node.label}</span>
+                {activeStreams.filter(s => s.connId === conn.id).map(s => (
+                  <StreamParticle 
+                    key={s.id} 
+                    pathId={`stream-${conn.id}`} 
+                    color={s.color} 
+                    onComplete={() => setActiveStreams(prev => prev.filter(item => item.id !== s.id))} 
+                  />
+                ))}
+              </g>
+            );
+          })}
+
+          {/* Holographic Nodes */}
+          {nodes.map((node) => {
+            const Icon = node.icon;
+            const isPulsing = pulsingNodes[node.id];
+            return (
+              <g key={node.id}>
+                <circle
+                  cx={node.x}
+                  cy={node.y}
+                  r="6"
+                  fill="rgba(0,240,255,0.02)"
+                  filter="url(#hologram-glow)"
+                />
+                <path
+                  d={`M ${node.x} ${node.y - 5} L ${node.x + 4.5} ${node.y - 2.5} L ${node.x + 4.5} ${node.y + 2.5} L ${node.x} ${node.y + 5} L ${node.x - 4.5} ${node.y + 2.5} L ${node.x - 4.5} ${node.y - 2.5} Z`}
+                  fill="rgba(10,10,18,0.9)"
+                  stroke={isPulsing ? node.color : "rgba(255,255,255,0.15)"}
+                  strokeWidth="0.4"
+                />
+                <foreignObject x={node.x - 2.5} y={node.y - 2.5} width="5" height="5">
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Icon className={cn("w-full h-full", isPulsing ? "scale-110 drop-shadow-[0_0_8px_currentColor]" : "opacity-40")} style={{ color: isPulsing ? node.color : 'white' }} />
+                  </div>
+                </foreignObject>
+                <foreignObject x={node.x - 10} y={node.y + 7} width="20" height="10">
+                  <div className="flex flex-col items-center">
+                    <span className="text-[3px] font-black font-mono text-white/20 uppercase tracking-[0.3em] mb-0.5">
+                      {node.id.toUpperCase()}
+                    </span>
+                    <span className={cn("text-[4px] font-black uppercase tracking-tighter", isPulsing ? "text-white" : "text-white/40")}>
+                      {node.label}
+                    </span>
+                  </div>
+                </foreignObject>
+                {isPulsing && (
+                  <motion.circle cx={node.x} cy={node.y} r="5" fill="none" stroke={node.color} strokeWidth="0.5" initial={{ scale: 1, opacity: 0.8 }} animate={{ scale: 3, opacity: 0 }} transition={{ duration: 0.8 }} />
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      {/* Static HUD Overlays */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="hud-corner top-10 left-10 border-t-2 border-l-2" />
+        <div className="hud-corner top-10 right-10 border-t-2 border-r-2" />
+        <div className="hud-corner bottom-10 left-10 border-b-2 border-l-2" />
+        <div className="hud-corner bottom-10 right-10 border-b-2 border-r-2" />
+        <div className="absolute top-16 left-16 space-y-2">
+          <div className="flex items-center space-x-3 text-primary text-[10px] font-black uppercase tracking-[0.5em]">
+            <Radio className="w-4 h-4" />
+            <span>Spatial Topology Matrix</span>
+          </div>
+          <div className="h-1 w-48 bg-primary/20 rounded-full overflow-hidden">
+            <motion.div className="h-full bg-primary" animate={{ x: ['-100%', '100%'] }} transition={{ duration: 3, repeat: Infinity, ease: "linear" }} />
+          </div>
+        </div>
+        <div className="absolute bottom-16 right-16 flex flex-col items-end space-y-4">
+          <div className="glass-card p-6 bg-black/80 border-white/5 space-y-4 min-w-[200px]">
+            <div className="flex items-center justify-between border-b border-white/5 pb-2">
+              <span className="text-[8px] font-black text-white/30 uppercase tracking-widest">Active Signals</span>
+              <Boxes className="w-3 h-3 text-primary" />
             </div>
-          </motion.div>
-        );
-      })}
-
-      {/* Legend */}
-      <div className="absolute bottom-4 right-4 flex flex-col space-y-2 bg-black/40 p-3 rounded-lg border border-white/5 backdrop-blur-md">
-        <div className="flex items-center space-x-2">
-          <div className="w-2 h-2 rounded-full bg-[#00f0ff]" />
-          <span className="text-[10px] text-gray-400">Normal Ingress</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <div className="w-2 h-2 rounded-full bg-[#b026ff]" />
-          <span className="text-[10px] text-gray-400">Internal Traffic</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <div className="w-2 h-2 rounded-full bg-[#ff003c] animate-pulse" />
-          <span className="text-[10px] text-[#ff003c]">Threat Detected</span>
+            <div className="space-y-3">
+              {[
+                { label: 'UPLINK_STABLE', value: '98.2%', color: 'text-success' },
+                { label: 'THREAT_SCAN', value: 'ACTIVE', color: 'text-primary' },
+                { label: 'LATENCY', value: '4ms', color: 'text-white' }
+              ].map(item => (
+                <div key={item.label} className="flex justify-between items-center text-[8px] font-mono">
+                  <span className="text-white/20">{item.label}</span>
+                  <span className={item.color}>{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
+      <div className="absolute inset-0 pointer-events-none holographic-noise opacity-[0.05]" />
+      <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(0,240,255,0.03)_1px,transparent_1px)] bg-[size:100%_4px] opacity-20" />
     </div>
   );
 }

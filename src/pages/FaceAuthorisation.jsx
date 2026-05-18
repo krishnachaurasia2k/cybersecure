@@ -197,19 +197,38 @@ export default function FaceAuthorisation({ onAuth }) {
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const intervalRef = useRef(null);
+    const authTimeoutRef = useRef(null);
 
     const [status, setStatus] = useState("BOOTING BIOMETRIC SYSTEMS...");
     const [error, setError] = useState("");
     const [isModelLoaded, setIsModelLoaded] = useState(false);
     const [mode, setMode] = useState("loading"); // 'loading' | 'auth' | 'register'
     const [detectedName, setDetectedName] = useState("");
+    const [registeredCount, setRegisteredCount] = useState(0);
 
-    const STORAGE_KEY = "mission_copilot_commander_face";
+    const STORAGE_KEY = "mission_copilot_commander_faces";
+    const OLD_STORAGE_KEY = "mission_copilot_commander_face";
+
+    const getSavedFaces = () => {
+        const savedData = localStorage.getItem(STORAGE_KEY);
+        if (savedData) return JSON.parse(savedData);
+        
+        // Migration from old key
+        const oldData = localStorage.getItem(OLD_STORAGE_KEY);
+        if (oldData) {
+            const faces = [{ label: "Commander 1", descriptor: JSON.parse(oldData) }];
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(faces));
+            localStorage.removeItem(OLD_STORAGE_KEY);
+            return faces;
+        }
+        return [];
+    };
 
     useEffect(() => {
         loadModels();
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
+            if (authTimeoutRef.current) clearTimeout(authTimeoutRef.current);
             stopCamera();
         };
     }, []);
@@ -252,18 +271,17 @@ export default function FaceAuthorisation({ onAuth }) {
         }
     };
 
-    const startVideoLoop = (savedData = null) => {
+    const startVideoLoop = (savedFaces = null) => {
         if (intervalRef.current) clearInterval(intervalRef.current);
 
         let faceMatcher = null;
-        if (savedData) {
+        if (savedFaces && savedFaces.length > 0) {
             try {
-                const parsed = JSON.parse(savedData);
-                const savedDescriptor = new Float32Array(Object.values(parsed));
-                faceMatcher = new faceapi.FaceMatcher(
-                    new faceapi.LabeledFaceDescriptors("Commander", [savedDescriptor]),
-                    0.5
-                );
+                const labeledDescriptors = savedFaces.map((f, i) => {
+                    const descArray = new Float32Array(Object.values(f.descriptor));
+                    return new faceapi.LabeledFaceDescriptors(f.label, [descArray]);
+                });
+                faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.5);
             } catch (e) {
                 console.error("Data corruption", e);
             }
@@ -296,11 +314,11 @@ export default function FaceAuthorisation({ onAuth }) {
 
                 if (faceMatcher) {
                     const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
-                    if (bestMatch.label === "Commander") {
-                        setDetectedName("Commander");
-                        setStatus("IDENTITY CONFIRMED: COMMANDER.");
+                    if (bestMatch.label.includes("Commander")) {
+                        setDetectedName(bestMatch.label);
+                        setStatus(`IDENTITY CONFIRMED: ${bestMatch.label.toUpperCase()}. AUTO-LOGIN IN 4s...`);
                         clearInterval(intervalRef.current);
-                        setTimeout(onAuth, 1000);
+                        authTimeoutRef.current = setTimeout(onAuth, 4000);
                     } else {
                         setDetectedName("Unknown");
                         setStatus("UNAUTHORIZED USER DETECTED.");
@@ -321,15 +339,17 @@ export default function FaceAuthorisation({ onAuth }) {
         const displaySize = { width: video.videoWidth, height: video.videoHeight };
         faceapi.matchDimensions(canvas, displaySize);
 
-        const savedData = localStorage.getItem(STORAGE_KEY);
-        if (!savedData) {
+        const faces = getSavedFaces();
+        setRegisteredCount(faces.length);
+
+        if (faces.length === 0) {
             setMode("register");
             setStatus("NO COMMANDER REGISTERED. INITIATE REGISTRATION.");
             startVideoLoop(null);
         } else {
             setMode("auth");
             setStatus("SCANNING FOR COMMANDER...");
-            startVideoLoop(savedData);
+            startVideoLoop(faces);
         }
     };
 
@@ -344,12 +364,23 @@ export default function FaceAuthorisation({ onAuth }) {
 
         if (detection) {
             const descriptorArray = Array.from(detection.descriptor);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(descriptorArray));
-            setStatus("REGISTRATION COMPLETE. WELCOME COMMANDER.");
+            const faces = getSavedFaces();
+            
+            if (faces.length >= 3) {
+                setStatus("MAXIMUM FACES REGISTERED.");
+                return;
+            }
+
+            faces.push({ label: `Commander ${faces.length + 1}`, descriptor: descriptorArray });
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(faces));
+            setRegisteredCount(faces.length);
+
+            setStatus(`REGISTRATION COMPLETE FOR COMMANDER ${faces.length}.`);
             setTimeout(() => {
                 setMode('auth');
-                onAuth();
-            }, 1000);
+                setStatus("SCANNING FOR COMMANDER...");
+                startVideoLoop(faces);
+            }, 1500);
         } else {
             setStatus("FACE NOT DETECTED. TRY AGAIN.");
         }
@@ -380,7 +411,7 @@ export default function FaceAuthorisation({ onAuth }) {
                     </div>
                     {!videoRef.current && (
                         <div className="auth-avatar-icon">
-                            {detectedName === "Commander" ? "🔓" : "👤"}
+                            {detectedName.includes("Commander") ? "🔓" : "👤"}
                         </div>
                     )}
                 </div>
@@ -407,8 +438,13 @@ export default function FaceAuthorisation({ onAuth }) {
 
                 <div className="auth-actions">
                     {mode === 'register' && isModelLoaded && !error && (
-                        <button className="auth-btn" onClick={registerFace}>
-                            Capture & Register Face
+                        <button 
+                            className="auth-btn" 
+                            onClick={registerFace}
+                            disabled={status === "CAPTURING BIOMETRICS..."}
+                            style={{ opacity: status === "CAPTURING BIOMETRICS..." ? 0.5 : 1 }}
+                        >
+                            {status === "CAPTURING BIOMETRICS..." ? "Processing..." : "Capture & Register Face"}
                         </button>
                     )}
 
@@ -421,19 +457,64 @@ export default function FaceAuthorisation({ onAuth }) {
                         </div>
                     ) : (
                         mode === 'auth' && (
-                            <button className="auth-btn auth-btn-secondary" onClick={() => manualOverride()}>
-                                Use Password instead
-                            </button>
+                            <>
+                                {registeredCount > 0 && (
+                                    <button 
+                                        className="auth-btn" 
+                                        style={{ background: registeredCount >= 3 ? '#4b5563' : '#7000ff', color: 'white', cursor: registeredCount >= 3 ? 'not-allowed' : 'pointer' }} 
+                                        onClick={() => {
+                                            if (registeredCount >= 3) return;
+                                            if (authTimeoutRef.current) clearTimeout(authTimeoutRef.current);
+                                            setMode('register');
+                                            setDetectedName("");
+                                            setStatus('POSITION NEW FACE IN FRAME.');
+                                            startVideoLoop(null);
+                                        }}
+                                        disabled={registeredCount >= 3}
+                                    >
+                                        {registeredCount >= 3 ? "Maximum Face IDs Reached (3/3)" : `Add Another Face ID (${registeredCount}/3)`}
+                                    </button>
+                                )}
+                                <button className="auth-btn auth-btn-secondary" onClick={() => {
+                                    if (authTimeoutRef.current) clearTimeout(authTimeoutRef.current);
+                                    manualOverride();
+                                }}>
+                                    Use Password instead
+                                </button>
+                            </>
                         )
                     )}
                 </div>
 
-                {!error && mode === 'auth' && (
-                    <div className="auth-footer" onClick={() => {
-                        localStorage.removeItem(STORAGE_KEY);
-                        window.location.reload();
-                    }} style={{ cursor: 'pointer' }}>
-                        Reset Face ID
+                {!error && mode === 'auth' && registeredCount > 0 && (
+                    <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', marginTop: '1rem' }}>
+                        {registeredCount > 1 && (
+                            <div className="auth-footer" style={{ marginTop: 0, cursor: 'pointer', color: '#ef4444' }} onClick={() => {
+                                const pwd = window.prompt("Enter admin password to remove last face ID:");
+                                if (pwd === "Qwerty@123") {
+                                    const faces = getSavedFaces();
+                                    faces.pop(); // Remove the last added face
+                                    localStorage.setItem(STORAGE_KEY, JSON.stringify(faces));
+                                    window.location.reload();
+                                } else if (pwd !== null) {
+                                    alert("Access Denied: Incorrect Password.");
+                                }
+                            }}>
+                                Remove Last Face
+                            </div>
+                        )}
+                        <div className="auth-footer" style={{ marginTop: 0, cursor: 'pointer' }} onClick={() => {
+                            const pwd = window.prompt("Enter admin password to reset all face IDs:");
+                            if (pwd === "Qwerty@123") {
+                                localStorage.removeItem(STORAGE_KEY);
+                                localStorage.removeItem(OLD_STORAGE_KEY);
+                                window.location.reload();
+                            } else if (pwd !== null) {
+                                alert("Access Denied: Incorrect Password.");
+                            }
+                        }}>
+                            Reset All Face IDs
+                        </div>
                     </div>
                 )}
             </div>

@@ -3,6 +3,7 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { Shield, Activity, List, BarChart2, Volume2, ShieldAlert, Target } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion } from 'framer-motion';
+import BackgroundEffects from './BackgroundEffects';
 
 export default function Layout() {
   const location = useLocation();
@@ -13,7 +14,7 @@ export default function Layout() {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
-  
+
   // Background data fetching (Continuous across all pages)
   useEffect(() => {
     const seenPackets = new Set();
@@ -32,7 +33,7 @@ export default function Layout() {
               if (p.risk === 'Suspicious' || p.risk === 'Blocked') {
                 window.dispatchEvent(new CustomEvent('threat-alert', { detail: p }));
               }
-              
+
               // Keep set size manageable
               if (seenPackets.size > 500) {
                 const firstItem = seenPackets.values().next().value;
@@ -41,7 +42,7 @@ export default function Layout() {
             }
           });
         }
-        
+
         // 2. Fetch Stats
         const sResponse = await fetch('http://127.0.0.1:5001/api/stats');
         if (sResponse.ok) {
@@ -68,19 +69,20 @@ export default function Layout() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white flex flex-col">
+    <div className="min-h-screen bg-[#050508] text-white flex flex-col relative overflow-hidden">
+      <BackgroundEffects />
       {/* Top Navbar */}
-      <header 
+      <header
         className={cn(
           "fixed top-0 left-0 right-0 z-50 transition-all duration-500 px-6 py-4 flex justify-center",
           scrolled ? "top-2" : "top-0"
         )}
       >
-        <div 
+        <div
           className={cn(
             "w-full container mx-auto px-6 h-16 flex items-center justify-between transition-all duration-500",
-            scrolled 
-              ? "glass-panel bg-[rgba(10,10,15,0.85)] border-white/10 shadow-2xl rounded-2xl max-w-6xl" 
+            scrolled
+              ? "glass-panel bg-[rgba(10,10,15,0.85)] border-white/10 shadow-2xl rounded-2xl max-w-6xl"
               : "bg-transparent border-transparent"
           )}
         >
@@ -93,7 +95,7 @@ export default function Layout() {
               CYBER<span className="text-[#00f0ff]">SECURE</span>
             </span>
           </div>
-          
+
           <nav className="hidden lg:flex items-center bg-white/5 p-1 rounded-xl border border-white/5 relative">
             {navItems.map((item) => {
               const isActive = location.pathname === item.to;
@@ -108,14 +110,14 @@ export default function Layout() {
                 >
                   <item.icon className={cn("w-4 h-4", isActive && (item.danger ? "text-[#ff003c]" : "text-[#00f0ff]"))} />
                   <span className="text-[10px] font-bold uppercase tracking-[0.2em]">{item.label}</span>
-                  
+
                   {isActive && (
                     <motion.div
                       layoutId="nav-indicator"
                       className={cn(
                         "absolute inset-0 rounded-lg -z-10 border",
-                        item.danger 
-                          ? "bg-[#ff003c]/10 border-[#ff003c]/30 shadow-[0_0_15px_rgba(255,0,60,0.2)]" 
+                        item.danger
+                          ? "bg-[#ff003c]/10 border-[#ff003c]/30 shadow-[0_0_15px_rgba(255,0,60,0.2)]"
                           : "bg-[#00f0ff]/10 border-[#00f0ff]/30 shadow-[0_0_15px_rgba(0,240,255,0.2)]"
                       )}
                       transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
@@ -125,9 +127,9 @@ export default function Layout() {
               );
             })}
           </nav>
- 
+
           <div className="flex items-center space-x-4">
-            <button 
+            <button
               onClick={() => {
                 const current = localStorage.getItem('sound-alerts') === 'true';
                 localStorage.setItem('sound-alerts', !current);
@@ -138,7 +140,7 @@ export default function Layout() {
             >
               <Volume2 className="w-5 h-5" />
             </button>
-            <div 
+            <div
               onClick={() => {
                 localStorage.removeItem('isAuthenticated');
                 window.location.reload();
@@ -153,14 +155,14 @@ export default function Layout() {
           </div>
         </div>
       </header>
- 
+
       {/* Main Content Area */}
       <main className="flex-grow pt-28 pb-12">
         <div className="container mx-auto px-6">
           <Outlet />
         </div>
       </main>
-      
+
       {/* Footer Decoration */}
       <footer className="py-12 text-center border-t border-white/5 bg-black/20">
         <div className="container mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
