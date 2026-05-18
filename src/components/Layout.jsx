@@ -20,9 +20,10 @@ export default function Layout() {
     const seenPackets = new Set();
 
     const fetchAllData = async () => {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5001';
       try {
         // 1. Fetch Packets
-        const pResponse = await fetch('http://127.0.0.1:5001/api/packets');
+        const pResponse = await fetch(`${API_BASE}/api/packets`);
         if (pResponse.ok) {
           const packets = await pResponse.json();
           // Dispatch individual packet events only for NEW packets
@@ -44,7 +45,7 @@ export default function Layout() {
         }
 
         // 2. Fetch Stats
-        const sResponse = await fetch('http://127.0.0.1:5001/api/stats');
+        const sResponse = await fetch(`${API_BASE}/api/stats`);
         if (sResponse.ok) {
           const stats = await sResponse.json();
           window.dispatchEvent(new CustomEvent('stats-update', { detail: stats }));

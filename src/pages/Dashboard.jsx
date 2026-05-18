@@ -36,8 +36,9 @@ export default function Dashboard() {
 
   const fetchAuditLogs = async () => {
     try {
-      // Use responses endpoint which has the actual forensic data
-      const res = await fetch('http://127.0.0.1:5001/api/responses');
+      // Use dynamic API URL for cloud deployments
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5001';
+      const res = await fetch(`${API_BASE}/api/responses`);
       const data = await res.json();
       setAuditLogs(data);
       setShowAuditLogs(true);

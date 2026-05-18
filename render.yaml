@@ -1,0 +1,24 @@
+services:
+  # Python Backend Service
+  - type: web
+    name: cyber-core-backend
+    env: python
+    rootDir: cyber-monitor
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn monitor:app"
+    envVars:
+      - key: RENDER
+        value: "true"
+
+  # React Frontend Service
+  - type: web
+    name: cyber-core-frontend
+    env: static
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: "./dist"
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: cyber-core-backend
+          envVarKey: RENDER_EXTERNAL_URL

@@ -11,10 +11,11 @@ export default function DefenseHub() {
 
    const fetchDefenseData = async () => {
       try {
+         const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5001';
          const [resBlocked, resIncidents, resStatus] = await Promise.all([
-            fetch('http://127.0.0.1:5001/api/responses'),
-            fetch('http://127.0.0.1:5001/api/incidents'),
-            fetch('http://127.0.0.1:5001/api/defense/status')
+            fetch(`${API_BASE}/api/responses`),
+            fetch(`${API_BASE}/api/incidents`),
+            fetch(`${API_BASE}/api/defense/status`)
          ]);
 
          if (resBlocked.ok) setBlockedIps(await resBlocked.json());
@@ -38,7 +39,8 @@ export default function DefenseHub() {
 
    const handleUnblock = async (ip) => {
       try {
-         const response = await fetch('http://127.0.0.1:5001/api/responses/unblock', {
+         const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5001';
+         const response = await fetch(`${API_BASE}/api/responses/unblock`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ip })
@@ -89,7 +91,8 @@ export default function DefenseHub() {
                      onClick={async () => {
                         const newState = !autoDefense;
                         try {
-                           const res = await fetch('http://127.0.0.1:5001/api/defense/toggle', {
+                           const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5001';
+                           const res = await fetch(`${API_BASE}/api/defense/toggle`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ enabled: newState })
